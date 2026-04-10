@@ -257,6 +257,29 @@ rtk session                     # Show RTK adoption across recent sessions
 -v, --verbose          # Increase verbosity (-v, -vv, -vvv)
 ```
 
+## Windows Support
+
+RTK fully supports Windows with native implementations for core filesystem commands:
+
+**Native Windows Commands** (no external dependencies, <5ms):
+- `rtk ls` - Uses Rust `std::fs` instead of external `ls.exe`
+- Supports common flags: `-a` (show hidden), `-l` (long format), `-h` (human-readable sizes)
+- Automatically filters noise directories (`.git`, `node_modules`, etc.)
+- No PowerShell overhead - direct filesystem access
+
+**Cross-Platform Commands** (work on Windows, macOS, Linux):
+- Git operations: `rtk git status`, `rtk git log`, `rtk git diff`
+- Build tools: `rtk cargo build`, `rtk dotnet build`
+- Package managers: `rtk pnpm list`, `rtk pip list`
+- AWS CLI, Docker, kubectl: All supported on Windows
+
+**Windows-Specific Behavior**:
+- Command detection uses `PATHEXT` environment variable for `.exe`, `.cmd`, `.bat` resolution
+- PowerShell cmdlets (like `Get-Process`) detected automatically
+- Hidden files: Starts with `.` on Windows (same as Unix for consistency)
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for Windows-specific installation notes.
+
 ## Examples
 
 **Directory listing:**
