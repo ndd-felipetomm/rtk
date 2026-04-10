@@ -101,6 +101,25 @@ enum Commands {
         line_numbers: bool,
     },
 
+    /// Concatenate files with intelligent filtering (alias for read, Unix-style naming)
+    Cat {
+        /// Files to concatenate (supports multiple files and - for stdin)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+        /// Filter: none (default, full content), minimal, aggressive
+        #[arg(short, long, default_value = "none")]
+        level: core::filter::FilterLevel,
+        /// Max lines
+        #[arg(short, long, conflicts_with = "tail_lines")]
+        max_lines: Option<usize>,
+        /// Keep only last N lines
+        #[arg(long, conflicts_with = "max_lines")]
+        tail_lines: Option<usize>,
+        /// Show line numbers
+        #[arg(short = 'n', long)]
+        line_numbers: bool,
+    },
+
     /// Generate 2-line technical summary (heuristic-based)
     Smart {
         /// File to analyze
@@ -1286,6 +1305,46 @@ fn run_cli() -> Result<i32> {
             }
         }
 
+        // Cat is an alias for Read (Unix-style naming)
+        Commands::Cat {
+            files,
+            level,
+            max_lines,
+            tail_lines,
+            line_numbers,
+        } => {
+            let mut had_error = false;
+            let mut stdin_seen = false;
+            for file in &files {
+                let result = if file == Path::new("-") {
+                    if stdin_seen {
+                        eprintln!("rtk: warning: stdin specified more than once");
+                        continue;
+                    }
+                    stdin_seen = true;
+                    read::run_stdin(level, max_lines, tail_lines, line_numbers, cli.verbose)
+                } else {
+                    read::run(
+                        file,
+                        level,
+                        max_lines,
+                        tail_lines,
+                        line_numbers,
+                        cli.verbose,
+                    )
+                };
+                if let Err(e) = result {
+                    eprintln!("cat: {}: {}", file.display(), e.root_cause());
+                    had_error = true;
+                }
+            }
+            if had_error {
+                1
+            } else {
+                0
+            }
+        }
+
         Commands::Smart {
             file,
             model,
@@ -2166,6 +2225,7 @@ fn is_operational_command(cmd: &Commands) -> bool {
         Commands::Ls { .. }
             | Commands::Tree { .. }
             | Commands::Read { .. }
+            | Commands::Cat { .. }
             | Commands::Smart { .. }
             | Commands::Git { .. }
             | Commands::Gh { .. }

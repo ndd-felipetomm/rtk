@@ -500,7 +500,10 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     // semantics than rtk read or no equivalent at all. Only `-n` (line numbers)
     // maps correctly to `rtk read -n`. Skip rewrite for any other flag.
     if cmd_part.starts_with("cat ") {
-        let args = cmd_part["cat ".len()..].trim_start();
+        let args = cmd_part
+            .strip_prefix("cat ")
+            .unwrap_or_default()
+            .trim_start();
         if args.starts_with('-') && !args.starts_with("-n ") && !args.starts_with("-n\t") {
             return None;
         }
@@ -776,6 +779,42 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_dotnet_subcommands_with_expected_savings() {
+        let cases = [
+            ("dotnet build", 70.0, RtkStatus::Existing),
+            ("dotnet test", 80.0, RtkStatus::Existing),
+            ("dotnet restore", 60.0, RtkStatus::Existing),
+            ("dotnet format", 70.0, RtkStatus::Existing),
+            ("dotnet publish", 70.0, RtkStatus::Passthrough),
+            ("dotnet clean", 80.0, RtkStatus::Passthrough),
+            ("dotnet pack", 70.0, RtkStatus::Passthrough),
+        ];
+
+        for (cmd, expected_savings, expected_status) in cases {
+            assert_eq!(
+                classify_command(cmd),
+                Classification::Supported {
+                    rtk_equivalent: "rtk dotnet",
+                    category: "Build",
+                    estimated_savings_pct: expected_savings,
+                    status: expected_status,
+                },
+                "unexpected classification for {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_dotnet_workload_remains_unmatched_by_supported_rule() {
+        match classify_command("dotnet workload install wasm-tools") {
+            Classification::Unsupported { base_command } => {
+                assert_eq!(base_command, "dotnet workload");
+            }
+            other => panic!("expected Unsupported, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_registry_covers_all_cargo_subcommands() {
         // Verify that every CargoCommand variant (Build, Test, Clippy, Check, Fmt)
         // except Other has a matching pattern in the registry
@@ -955,6 +994,37 @@ mod tests {
         assert_eq!(
             rewrite_command("cargo test", &[]),
             Some("rtk cargo test".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_dotnet_supported_subcommands() {
+        let cases = [
+            ("dotnet build", "rtk dotnet build"),
+            ("dotnet test --filter Unit", "rtk dotnet test --filter Unit"),
+            (
+                "dotnet restore src/App.csproj",
+                "rtk dotnet restore src/App.csproj",
+            ),
+            (
+                "dotnet format --verify-no-changes",
+                "rtk dotnet format --verify-no-changes",
+            ),
+            ("dotnet publish -c Release", "rtk dotnet publish -c Release"),
+            ("dotnet clean", "rtk dotnet clean"),
+            ("dotnet pack -c Release", "rtk dotnet pack -c Release"),
+        ];
+
+        for (cmd, expected) in cases {
+            assert_eq!(rewrite_command(cmd, &[]), Some(expected.to_string()));
+        }
+    }
+
+    #[test]
+    fn test_rewrite_dotnet_workload_not_rewritten() {
+        assert_eq!(
+            rewrite_command("dotnet workload install wasm-tools", &[]),
+            None
         );
     }
 

@@ -336,33 +336,116 @@ pub fn resolve_binary(name: &str) -> Result<PathBuf> {
 ///
 /// # Returns
 /// A `Command` configured with the resolved binary path.
+
+/// Windows command execution strategy.
+///
+/// RTK uses a three-tier approach on Windows to solve the fundamental issue where PowerShell
+/// aliases (like `ls` → `Get-ChildItem`) cannot be resolved as external binaries via PATH lookup:
+///
+/// - **Native**: Commands implemented in pure Rust (ls, cat) — zero external process overhead
+/// - **External**: External executables resolved via PATH+PATHEXT (git, cargo, dotnet)
+/// - **PowerShell**: PowerShell cmdlets requiring pwsh wrapper (Get-Process, Get-Service) — future support
+///
+/// To add a new native command:
+/// 1. Add the command name to the `Native` match arm in `detect_command_strategy()`
+/// 2. Implement the Rust-native handler in the appropriate `src/cmds/` module
+/// 3. Use `#[cfg(target_os = "windows")]` to provide platform-specific implementation
+///
+/// # Performance
+/// - Native commands: <5ms (no spawning)
+/// - External commands: 5-10ms (PATH resolution + spawn)
+/// - PowerShell wrapper: ~150-200ms (pwsh startup overhead) — **avoid when possible**
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WindowsCommandStrategy {
+    /// Command has native Rust implementation (ls, cat, tree)
+    Native,
+    /// External executable resolved via PATH (git, cargo, dotnet)
+    External,
+    /// PowerShell cmdlet requiring pwsh wrapper (Get-Process, Get-Service)
+    PowerShell,
+}
+
+/// Detect the appropriate execution strategy for a command on Windows.
+///
+/// # Arguments
+/// * `name` - Command name (e.g., "ls", "git", "Get-Process")
+///
+/// # Returns
+/// The execution strategy to use for this command.
+#[cfg(target_os = "windows")]
+pub fn detect_command_strategy(name: &str) -> WindowsCommandStrategy {
+    match name {
+        // Native Rust implementations (Phase 1)
+        "ls" | "cat" => WindowsCommandStrategy::Native,
+        
+        // PowerShell cmdlets (future Phase 2 support)
+        "Get-ChildItem" | "gci" | "dir" |
+        "Get-Content" | "gc" | "type" |
+        "Get-Process" | "gps" | "ps" |
+        "Get-Service" | "gsv" |
+        "Select-String" | "sls" |
+        "Where-Object" | "where" |
+        "Sort-Object" | "sort" |
+        "Invoke-WebRequest" | "iwr" | "wget" | "curl" => WindowsCommandStrategy::PowerShell,
+        
+        // Everything else: external executable via PATH
+        _ => WindowsCommandStrategy::External,
+    }
+}
 pub fn resolved_command(name: &str) -> Command {
-    match resolve_binary(name) {
-        Ok(path) => Command::new(path),
-        Err(e) => {
-            // On Windows, resolution failure likely means a .CMD/.BAT wrapper
-            // wasn't found — always warn so users have a signal.
-            // On Unix, this is less common; only log in debug builds.
-            #[cfg(target_os = "windows")]
-            eprintln!(
-                "rtk: Failed to resolve '{}' via PATH, falling back to direct exec: {}",
-                name, e
-            );
-            #[cfg(not(target_os = "windows"))]
-            {
+    #[cfg(target_os = "windows")]
+    {
+        use WindowsCommandStrategy::*;
+        match detect_command_strategy(name) {
+            Native => {
+                // Native Rust implementations don't use Command::new
+                // The calling module handles execution directly  
+                // Return placeholder that won't be used
+                eprintln!("rtk: internal error: resolved_command() called for native command '{}' — should be handled by module", name);
+                Command::new("echo")
+            }
+            PowerShell => {
+                // PowerShell cmdlets not yet supported (Phase 2)
+                eprintln!(
+                    "rtk: '{}' is a PowerShell cmdlet (not yet supported). Use 'rtk proxy {}' instead.",
+                    name, name
+                );
+                // Fallback to direct Command::new (will fail with clear error)
+                Command::new(name)
+            }
+            External => {
+                // External executable: use existing PATH+PATHEXT resolution
+                match resolve_binary(name) {
+                    Ok(path) => Command::new(path),
+                    Err(e) => {
+                        eprintln!(
+                            "rtk: Failed to resolve '{}' via PATH, falling back to direct exec: {}",
+                            name, e
+                        );
+                        Command::new(name)
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix: existing logic unchanged
+        match resolve_binary(name) {
+            Ok(path) => Command::new(path),
+            Err(e) => {
                 #[cfg(debug_assertions)]
                 eprintln!(
                     "rtk: Failed to resolve '{}' via PATH, falling back to direct exec: {}",
                     name, e
                 );
+                Command::new(name)
             }
-            Command::new(name)
         }
     }
 }
-
-/// Check if a tool exists on PATH (PATHEXT-aware on Windows).
-///
 /// Replaces manual `Command::new("which").arg(tool)` checks that fail on Windows.
 pub fn tool_exists(name: &str) -> bool {
     which::which(name).is_ok()
@@ -861,5 +944,44 @@ mod tests {
     fn test_count_tokens_multiple_spaces() {
         assert_eq!(count_tokens("hello    world"), 2);
         assert_eq!(count_tokens("  hello   world  "), 2);
+    }
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_ls_returns_native() {
+        assert_eq!(
+            detect_command_strategy("ls"),
+            WindowsCommandStrategy::Native,
+            "ls should use Native strategy"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_cat_returns_native() {
+        assert_eq!(
+            detect_command_strategy("cat"),
+            WindowsCommandStrategy::Native,
+            "cat should use Native strategy"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_git_returns_external() {
+        assert_eq!(
+            detect_command_strategy("git"),
+            WindowsCommandStrategy::External,
+            "git should use External strategy"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_get_process_returns_powershell() {
+        assert_eq!(
+            detect_command_strategy("Get-Process"),
+            WindowsCommandStrategy::PowerShell,
+            "Get-Process should use PowerShell strategy"
+        );
     }
 }
