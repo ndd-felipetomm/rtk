@@ -1,0 +1,30 @@
+Microsoft (R) Build Engine version 17.8.3+195e7f5a3
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  App -> /repo/App/bin/Debug/net8.0/App.dll
+  App.Tests -> /repo/App.Tests/bin/Debug/net8.0/App.Tests.dll
+  Analyzer -> /repo/Analyzer/bin/Debug/net8.0/Analyzer.dll
+  Shared -> /repo/Shared/bin/Debug/net8.0/Shared.dll
+  Infrastructure -> /repo/Infrastructure/bin/Debug/net8.0/Infrastructure.dll
+  Domain -> /repo/Domain/bin/Debug/net8.0/Domain.dll
+  Web -> /repo/Web/bin/Debug/net8.0/Web.dll
+  CLI -> /repo/CLI/bin/Debug/net8.0/CLI.dll
+  Worker -> /repo/Worker/bin/Debug/net8.0/Worker.dll
+  Tooling -> /repo/Tooling/bin/Debug/net8.0/Tooling.dll
+  IntegrationTests -> /repo/IntegrationTests/bin/Debug/net8.0/IntegrationTests.dll
+
+/repo/App/Program.cs(42,17): error CS0103: The name 'missingValue' does not exist in the current context [/repo/App/App.csproj]
+/repo/App/Program.cs(57,13): warning CS0219: The variable 'unused' is assigned but its value is never used [/repo/App/App.csproj]
+/repo/Worker/Worker.cs(19,9): warning CS8602: Dereference of a possibly null reference. [/repo/Worker/Worker.csproj]
+
+Build FAILED.
+
+/repo/App/Program.cs(42,17): error CS0103: The name 'missingValue' does not exist in the current context [/repo/App/App.csproj]
+/repo/App/Program.cs(57,13): warning CS0219: The variable 'unused' is assigned but its value is never used [/repo/App/App.csproj]
+/repo/Worker/Worker.cs(19,9): warning CS8602: Dereference of a possibly null reference. [/repo/Worker/Worker.csproj]
+    2 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:07.12

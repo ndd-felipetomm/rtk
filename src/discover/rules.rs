@@ -396,13 +396,25 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     RtkRule {
-        pattern: r"^dotnet\s+build\b",
+        pattern: r"^dotnet\s+(build|test|restore|format|publish|clean|pack)\b",
         rtk_cmd: "rtk dotnet",
         rewrite_prefixes: &["dotnet"],
         category: "Build",
         savings_pct: 70.0,
-        subcmd_savings: &[],
-        subcmd_status: &[],
+        subcmd_savings: &[
+            ("build", 70.0),
+            ("test", 80.0),
+            ("restore", 60.0),
+            ("format", 70.0),
+            ("publish", 70.0),
+            ("clean", 80.0),
+            ("pack", 70.0),
+        ],
+        subcmd_status: &[
+            ("publish", RtkStatus::Passthrough),
+            ("clean", RtkStatus::Passthrough),
+            ("pack", RtkStatus::Passthrough),
+        ],
     },
     RtkRule {
         pattern: r"^du\b",

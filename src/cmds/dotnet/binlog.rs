@@ -84,13 +84,13 @@ lazy_static! {
     )
     .expect("valid regex");
     static ref RESTORE_PROJECT_RE: Regex =
-        Regex::new(r"(?m)^\s*Restored\s+.+\.csproj\s*\(").expect("valid regex");
+        Regex::new(r"(?m)^\s*Restored\s+.+\.(csproj|fsproj|vbproj)\s*\(").expect("valid regex");
     static ref RESTORE_DIAGNOSTIC_RE: Regex = Regex::new(
         r"(?mi)^\s*(?:(?P<file>.+?)\s+:\s+)?(?P<kind>warning|error)\s+(?P<code>[A-Za-z]{2,}\d{3,})\s*:\s*(?P<msg>.+)$"
     )
     .expect("valid regex");
     static ref PROJECT_PATH_RE: Regex =
-        Regex::new(r"(?m)^\s*([A-Za-z]:)?[^\r\n]*\.csproj(?:\s|$)").expect("valid regex");
+        Regex::new(r"(?m)^\s*([A-Za-z]:)?[^\r\n]*\.(csproj|fsproj|vbproj)(?:\s|$)").expect("valid regex");
     static ref PRINTABLE_RUN_RE: Regex = Regex::new(r"[\x20-\x7E]{5,}").expect("valid regex");
     static ref DIAGNOSTIC_CODE_RE: Regex =
         Regex::new(r"^[A-Za-z]{2,}\d{3,}$").expect("valid regex");
@@ -1352,6 +1352,31 @@ Build failed with 1 error(s) and 4 warning(s) in 6.0s
         let summary = parse_restore_from_text(input);
         assert_eq!(summary.restored_projects, 2);
         assert_eq!(summary.errors, 0);
+    }
+
+    #[test]
+    fn test_parse_restore_from_text_counts_fsproj_and_vbproj() {
+        let input = r#"
+  Restored /tmp/App/App.csproj (in 1.1 sec).
+  Restored /tmp/FSharp.Core/FSharp.Core.fsproj (in 1.3 sec).
+  Restored /tmp/Vb.Legacy/Vb.Legacy.vbproj (in 1.4 sec).
+"#;
+
+        let summary = parse_restore_from_text(input);
+        assert_eq!(summary.restored_projects, 3);
+        assert_eq!(summary.errors, 0);
+    }
+
+    #[test]
+    fn test_count_projects_supports_csproj_fsproj_and_vbproj() {
+        let input = r#"
+/Users/dev/src/App/App.csproj
+/Users/dev/src/Shared/Shared.fsproj
+/Users/dev/src/Legacy/Legacy.vbproj
+/Users/dev/src/not-a-project.txt
+"#;
+
+        assert_eq!(count_projects(input), 3);
     }
 
     #[test]

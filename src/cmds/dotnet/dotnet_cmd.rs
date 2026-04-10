@@ -219,19 +219,7 @@ fn run_dotnet_with_binlog(subcommand: &str, args: &[String], verbose: u8) -> Res
         _ => raw.clone(),
     };
 
-    let output_to_print = if !output.status.success() {
-        let stdout_trimmed = stdout.trim();
-        let stderr_trimmed = stderr.trim();
-        if !stdout_trimmed.is_empty() {
-            format!("{}\n\n{}", stdout_trimmed, filtered)
-        } else if !stderr_trimmed.is_empty() {
-            format!("{}\n\n{}", stderr_trimmed, filtered)
-        } else {
-            filtered
-        }
-    } else {
-        filtered
-    };
+    let output_to_print = select_output_to_print(output.status.success(), &filtered, &raw);
 
     println!("{}", output_to_print);
 
@@ -960,6 +948,21 @@ fn merge_restore_summaries(
     binlog_summary
 }
 
+fn select_output_to_print(command_succeeded: bool, filtered: &str, raw: &str) -> String {
+    if command_succeeded {
+        return filtered.to_string();
+    }
+
+    let filtered_trimmed = filtered.trim();
+    let raw_trimmed = raw.trim();
+
+    if filtered_trimmed.is_empty() || filtered_trimmed == raw_trimmed {
+        return raw_trimmed.to_string();
+    }
+
+    filtered.to_string()
+}
+
 fn format_issue(issue: &binlog::BinlogIssue, kind: &str) -> String {
     if issue.file.is_empty() {
         return format!("  {} {}", kind, truncate(&issue.message, 180));
@@ -1189,6 +1192,10 @@ mod tests {
             .join(name)
     }
 
+    fn count_tokens(text: &str) -> usize {
+        text.split_whitespace().count()
+    }
+
     #[test]
     fn test_has_binlog_arg_detects_variants() {
         let args = vec!["-bl:my.binlog".to_string()];
@@ -1355,6 +1362,48 @@ mod tests {
         assert!(output.contains("Errors:"));
         assert!(output.contains("error NU1101"));
         assert!(output.contains("Unable to find package Foo.Bar"));
+    }
+
+    #[test]
+    fn test_select_output_to_print_uses_filtered_output_on_failed_build() {
+        let raw = fs::read_to_string(format_fixture("build_failed.txt")).expect("read fixture");
+        let summary = normalize_build_summary(binlog::parse_build_from_text(&raw), false);
+        let filtered = format_build_output(&summary, Path::new("/tmp/build.binlog"));
+
+        let output = select_output_to_print(false, &filtered, &raw);
+
+        assert_eq!(output, filtered);
+        assert!(!output.contains("Determining projects to restore"));
+        assert!(output.contains("fail dotnet build"));
+        assert!(output.contains("error CS1525"));
+    }
+
+    #[test]
+    fn test_select_output_to_print_falls_back_to_raw_when_filtered_empty() {
+        let raw = "raw failure output\nline 2";
+        let output = select_output_to_print(false, "   ", raw);
+        assert_eq!(output, raw);
+    }
+
+    #[test]
+    fn test_failed_build_filtered_output_saves_at_least_sixty_percent_tokens() {
+        let raw =
+            fs::read_to_string(format_fixture("build_failed_noisy.txt")).expect("read fixture");
+        let summary = normalize_build_summary(binlog::parse_build_from_text(&raw), false);
+        let filtered = format_build_output(&summary, Path::new("/tmp/build.binlog"));
+        let output = select_output_to_print(false, &filtered, &raw);
+
+        let input_tokens = count_tokens(&raw);
+        let output_tokens = count_tokens(&output);
+        let savings = 100.0 - (output_tokens as f64 / input_tokens as f64 * 100.0);
+
+        assert!(
+            savings >= 60.0,
+            "Expected >=60% token savings for failed build fixture, got {:.1}% ({} -> {})",
+            savings,
+            input_tokens,
+            output_tokens
+        );
     }
 
     #[test]
